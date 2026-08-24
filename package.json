@@ -1,0 +1,25 @@
+{
+  "name": "prime-forecast-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Read-only MCP gateway for Prime Forecast V3",
+  "type": "module",
+  "main": "app.js",
+  "engines": {
+    "node": "24.19.0",
+    "npm": ">=11"
+  },
+  "scripts": {
+    "start": "node app.js",
+    "test": "node --test",
+    "test:permissions": "node --test test/permission-guard.test.js test/mcp-tools.test.js",
+    "check": "node --check app.js && node --test"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/express": "2.0.0",
+    "@modelcontextprotocol/node": "2.0.0",
+    "@modelcontextprotocol/server": "2.0.0",
+    "express": "5.2.1",
+    "zod": "4.4.3"
+  }
+}

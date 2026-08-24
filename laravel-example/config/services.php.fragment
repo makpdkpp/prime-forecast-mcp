@@ -1,0 +1,8 @@
+<?php
+
+// Merge this key into the existing config/services.php return array.
+'prime_mcp' => [
+    'service_key' => env('PRIME_MCP_SERVICE_KEY'),
+    'audit_channel' => env('PRIME_MCP_AUDIT_CHANNEL', 'daily'),
+],
+
