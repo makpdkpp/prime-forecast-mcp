@@ -68,6 +68,27 @@ export function createApplication({ config, logger, fetchImpl = fetch }) {
     requiredScopes: ['mcp:read'],
     resourceMetadataUrl
   });
+  const authDiagnostics = (req, res, next) => {
+    const requestId = req.get('x-request-id') || randomUUID();
+    const authorization = req.get('authorization') ?? '';
+    const bearerPresent = /^Bearer\s+\S+/i.test(authorization);
+    const startedAt = Date.now();
+
+    res.set('x-request-id', requestId);
+    res.set('cache-control', 'no-store');
+    res.vary('Authorization');
+    res.on('finish', () => {
+      logger.info('http.mcp_auth', {
+        request_id: requestId,
+        http_status: res.statusCode,
+        authorization_present: authorization.length > 0,
+        bearer_present: bearerPresent,
+        challenge_present: res.hasHeader('www-authenticate'),
+        duration_ms: Date.now() - startedAt
+      });
+    });
+    next();
+  };
   const nodeHandler = toNodeHandler(handler);
   const auditRejectedTool = async (req, _res, next) => {
     try {
@@ -94,7 +115,7 @@ export function createApplication({ config, logger, fetchImpl = fetch }) {
       next(error);
     }
   };
-  app.all('/mcp', auth, auditRejectedTool, (req, res) => void nodeHandler(req, res, req.body));
+  app.all('/mcp', authDiagnostics, auth, auditRejectedTool, (req, res) => void nodeHandler(req, res, req.body));
 
   app.use((error, _req, res, _next) => {
     logger.error('http.unhandled_error', { error });

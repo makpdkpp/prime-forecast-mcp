@@ -9,7 +9,13 @@ test('MCP endpoint rejects requests without a bearer token', async (t) => {
   t.after(() => app.stop());
   const { response } = await mcpRequest(app.baseUrl, null, listTools);
   assert.equal(response.status, 401);
-  assert.match(response.headers.get('www-authenticate'), /resource_metadata=/);
+  const challenge = response.headers.get('www-authenticate');
+  assert.match(challenge, /^Bearer /);
+  assert.match(challenge, /scope="mcp:read"/);
+  assert.match(challenge, /resource_metadata="http:\/\/127\.0\.0\.1\/\.well-known\/oauth-protected-resource"/);
+  assert.equal(response.headers.get('cache-control'), 'no-store');
+  assert.match(response.headers.get('vary'), /Authorization/i);
+  assert.ok(response.headers.get('x-request-id'));
 });
 
 test('MCP endpoint maps a rejected bearer token to 401, never 500', async (t) => {
