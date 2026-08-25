@@ -25,6 +25,17 @@ function epochSeconds(value) {
   return Math.floor(millis / 1000);
 }
 
+function forecastResult(payload) {
+  if (Array.isArray(payload?.data)) {
+    return {
+      items: payload.data,
+      summary: payload.summary ?? null,
+      meta: payload.meta ?? null
+    };
+  }
+  return payload?.data ?? payload;
+}
+
 export class LaravelGatewayClient {
   constructor({ baseUrl, serviceToken, timeoutMs = 8000, fetchImpl = fetch }) {
     this.baseUrl = baseUrl;
@@ -33,7 +44,9 @@ export class LaravelGatewayClient {
     this.fetch = fetchImpl;
   }
 
-  async request(path, { method = 'GET', userToken, body, timeoutMs = this.timeoutMs } = {}) {
+  async request(path, {
+    method = 'GET', userToken, body, timeoutMs = this.timeoutMs, unwrapData = true, requestContext
+  } = {}) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
@@ -43,6 +56,11 @@ export class LaravelGatewayClient {
           accept: 'application/json',
           'content-type': 'application/json',
           'x-prime-mcp-key': this.serviceToken,
+          ...(requestContext?.requestId ? {
+            'x-request-id': requestContext.requestId,
+            'x-trace-id': requestContext.requestId
+          } : {}),
+          ...(requestContext?.tool ? { 'x-mcp-tool-name': requestContext.tool } : {}),
           ...(userToken ? { authorization: `Bearer ${userToken}` } : {})
         },
         body: body === undefined ? undefined : JSON.stringify(body),
@@ -51,9 +69,10 @@ export class LaravelGatewayClient {
 
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
-        throw new GatewayError(payload?.message ?? `Laravel Gateway returned HTTP ${response.status}`, {
+        const errorPayload = payload?.error ?? payload;
+        throw new GatewayError(errorPayload?.message ?? `Laravel Gateway returned HTTP ${response.status}`, {
           status: response.status,
-          code: payload?.code ?? (
+          code: errorPayload?.code ?? (
             response.status === 401 ? 'invalid_token'
               : response.status === 403 ? 'permission_denied'
                 : 'gateway_rejected'
@@ -61,7 +80,7 @@ export class LaravelGatewayClient {
           retryable: response.status >= 500
         });
       }
-      return payload?.data ?? payload;
+      return unwrapData ? (payload?.data ?? payload) : payload;
     } catch (error) {
       if (error instanceof GatewayError) throw error;
       const timeout = error?.name === 'AbortError';
@@ -101,20 +120,28 @@ export class LaravelGatewayClient {
     return this.request(READ_PATHS.health);
   }
 
-  getMyForecast(token, query) {
-    return this.request(withQuery(READ_PATHS.myForecast, query), { userToken: token });
+  async getMyForecast(token, query, requestContext) {
+    return forecastResult(await this.request(withQuery(READ_PATHS.myForecast, query), {
+      userToken: token, unwrapData: false, requestContext
+    }));
   }
 
-  listTeamForecasts(token, teamId, query) {
-    return this.request(withQuery(READ_PATHS.teamForecasts(teamId), query), { userToken: token });
+  async listTeamForecasts(token, teamId, query, requestContext) {
+    return forecastResult(await this.request(withQuery(READ_PATHS.teamForecasts(teamId), query), {
+      userToken: token, unwrapData: false, requestContext
+    }));
   }
 
-  getSalesForecast(token, salesId, query) {
-    return this.request(withQuery(READ_PATHS.salesForecast(salesId), query), { userToken: token });
+  async getSalesForecast(token, salesId, query, requestContext) {
+    return forecastResult(await this.request(withQuery(READ_PATHS.salesForecast(salesId), query), {
+      userToken: token, unwrapData: false, requestContext
+    }));
   }
 
-  getCompanyForecast(token, query) {
-    return this.request(withQuery(READ_PATHS.companyForecast, query), { userToken: token });
+  async getCompanyForecast(token, query, requestContext) {
+    return forecastResult(await this.request(withQuery(READ_PATHS.companyForecast, query), {
+      userToken: token, unwrapData: false, requestContext
+    }));
   }
 
   writeAudit(event, timeoutMs) {

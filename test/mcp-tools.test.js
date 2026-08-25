@@ -49,8 +49,17 @@ test('sales can call own forecast and every call emits a Laravel audit event', a
   assert.equal(response.status, 200);
   assert.equal(body.result.isError, undefined);
   assert.match(body.result.content[0].text, /125000/);
-  assert.ok(calls.some((call) => call.path === '/api/mcp/v1/forecast/me' && call.method === 'GET'));
-  assert.ok(calls.some((call) => call.path === '/api/mcp/v1/audit-events' && call.method === 'POST'));
+  const result = JSON.parse(body.result.content[0].text);
+  assert.equal(result.items[0].owner_id, 101);
+  assert.equal(result.summary.forecast_value, 125000);
+  assert.equal(result.meta.total, 1);
+  const forecastCall = calls.find((call) => call.path === '/api/mcp/v1/forecast/me' && call.method === 'GET');
+  const auditCall = calls.find((call) => call.path === '/api/mcp/v1/audit-events' && call.method === 'POST');
+  assert.ok(forecastCall);
+  assert.ok(auditCall);
+  assert.equal(forecastCall.headers['x-mcp-tool-name'], 'get_my_forecast');
+  assert.equal(forecastCall.headers['x-request-id'], auditCall.body.request_id);
+  assert.equal(auditCall.body.http_status, 200);
 });
 
 test('team admin cannot escape assigned team scope', async (t) => {
@@ -76,6 +85,28 @@ test('sales cannot invoke an unregistered company tool directly', async (t) => {
   });
   assert.ok(body.error || body.result?.isError);
   assert.equal(calls.some((call) => call.path === '/api/mcp/v1/forecast/company'), false);
+  const auditCall = calls.find((call) => call.path === '/api/mcp/v1/audit-events');
+  assert.ok(auditCall);
+  assert.equal(auditCall.body.tool, 'get_company_forecast');
+  assert.equal(auditCall.body.allowed, false);
+  assert.equal(auditCall.body.http_status, 403);
+});
+
+test('gateway rejection keeps its HTTP status in the Laravel audit event', async (t) => {
+  const calls = [];
+  const app = await startTestApp({ calls });
+  t.after(() => app.stop());
+  const { body } = await mcpRequest(app.baseUrl, 'team', {
+    jsonrpc: '2.0', id: 5, method: 'tools/call',
+    params: { name: 'get_sales_forecast', arguments: { sales_id: '404' } }
+  });
+  assert.equal(body.result.isError, true);
+  assert.match(body.result.content[0].text, /not_found/);
+  const auditCall = calls.find((call) => call.path === '/api/mcp/v1/audit-events');
+  assert.ok(auditCall);
+  assert.equal(auditCall.body.allowed, true);
+  assert.equal(auditCall.body.outcome, 'not_found');
+  assert.equal(auditCall.body.http_status, 404);
 });
 
 test('health and readiness endpoints report independently', async (t) => {

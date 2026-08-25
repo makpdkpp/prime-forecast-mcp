@@ -16,6 +16,8 @@ Base URL: `https://sale.primes.co.th/api/mcp/v1`
 
 `POST` สองรายการข้างต้นไม่ใช่ business write tools: รายการแรกเป็น token introspection และรายการที่สองเป็น append-only security audit
 
+Forecast responses จาก Laravel ใช้รูปแบบ `{ "data": [...], "summary": {...}, "meta": {...} }` และ MCP ต้องรักษาทั้งสามส่วน โดยแปลง `data` เป็น `items` เพื่อไม่ให้ข้อมูล pagination และผลรวมสูญหาย
+
 ## Auth context response
 
 ```json
@@ -47,3 +49,8 @@ Base URL: `https://sale.primes.co.th/api/mcp/v1`
 - `429`: rate limit
 - `5xx`: dependency/internal failure; ห้ามแนบ stack trace หรือ SQL ใน production
 
+## Audit event
+
+Node ส่ง `request_id` เดียวกันใน `X-Request-Id`, `X-Trace-Id` และ audit body เพื่อเชื่อม Tool Audit กับ Laravel endpoint audit โดย audit body ต้องมี `tool`, `allowed`, `outcome`, `http_status`, `argument_keys` และ `duration_ms`
+
+Laravel ต้องรับชื่อ tool ที่ไม่รู้จักเพื่อบันทึก attempted/unregistered calls แต่ห้ามนำชื่อดังกล่าวไป dispatch หรือสร้าง endpoint แบบ dynamic

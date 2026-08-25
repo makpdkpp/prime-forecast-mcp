@@ -1,8 +1,10 @@
 import { createMcpExpressApp, requireBearerAuth } from '@modelcontextprotocol/express';
 import { toNodeHandler } from '@modelcontextprotocol/node';
+import { randomUUID } from 'node:crypto';
 import { LaravelGatewayClient } from './laravel-client.js';
 import { AuditLogger } from './audit.js';
 import { createPrimeMcpHandler, createTokenVerifier } from './mcp-server.js';
+import { normalizePrincipal, visibleTools } from './permission-guard.js';
 
 export function createApplication({ config, logger, fetchImpl = fetch }) {
   const gateway = new LaravelGatewayClient({
@@ -67,7 +69,32 @@ export function createApplication({ config, logger, fetchImpl = fetch }) {
     resourceMetadataUrl
   });
   const nodeHandler = toNodeHandler(handler);
-  app.all('/mcp', auth, (req, res) => void nodeHandler(req, res, req.body));
+  const auditRejectedTool = async (req, _res, next) => {
+    try {
+      const tool = req.body?.method === 'tools/call' ? req.body?.params?.name : null;
+      if (typeof tool === 'string') {
+        const principal = normalizePrincipal(req.auth);
+        if (!visibleTools(principal).includes(tool)) {
+          await audit.record({
+            request_id: randomUUID(),
+            actor_user_id: principal.userId,
+            actor_role: principal.role,
+            team_ids: principal.teamIds,
+            tool,
+            allowed: false,
+            outcome: 'permission_denied',
+            http_status: 403,
+            argument_keys: Object.keys(req.body?.params?.arguments ?? {}).sort(),
+            duration_ms: 0
+          });
+        }
+      }
+      next();
+    } catch (error) {
+      next(error);
+    }
+  };
+  app.all('/mcp', auth, auditRejectedTool, (req, res) => void nodeHandler(req, res, req.body));
 
   app.use((error, _req, res, _next) => {
     logger.error('http.unhandled_error', { error });
@@ -81,4 +108,3 @@ export function createApplication({ config, logger, fetchImpl = fetch }) {
     close: () => handler.close()
   };
 }
-

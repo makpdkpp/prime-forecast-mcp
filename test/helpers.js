@@ -22,7 +22,13 @@ export function createMockGatewayFetch({ calls = [] } = {}) {
     const parsed = new URL(url);
     const authorization = options.headers?.authorization;
     const token = authorization?.replace(/^Bearer /, '');
-    calls.push({ path: parsed.pathname, method: options.method, token });
+    calls.push({
+      path: parsed.pathname,
+      method: options.method,
+      token,
+      headers: options.headers,
+      body: options.body ? JSON.parse(options.body) : null
+    });
 
     if (parsed.pathname === '/api/mcp/v1/auth/context') {
       const principal = PRINCIPALS[token];
@@ -31,9 +37,18 @@ export function createMockGatewayFetch({ calls = [] } = {}) {
     }
     if (parsed.pathname === '/api/mcp/v1/health') return Response.json({ data: { status: 'ok' } });
     if (parsed.pathname === '/api/mcp/v1/audit-events') return Response.json({ data: { accepted: true } }, { status: 202 });
-    if (parsed.pathname === '/api/mcp/v1/forecast/me') return Response.json({ data: { owner_id: Number(PRINCIPALS[token].user.id), total: 125000 } });
+    if (parsed.pathname === '/api/mcp/v1/forecast/me') {
+      return Response.json({
+        data: [{ owner_id: Number(PRINCIPALS[token].user.id), total: 125000 }],
+        summary: { project_count: 1, forecast_value: 125000 },
+        meta: { current_page: 1, total: 1 }
+      });
+    }
     if (parsed.pathname === '/api/mcp/v1/teams/10/forecasts') return Response.json({ data: { team_id: 10, items: [] } });
     if (parsed.pathname === '/api/mcp/v1/forecast/company') return Response.json({ data: { total: 999000 } });
+    if (parsed.pathname === '/api/mcp/v1/sales/404/forecast') {
+      return Response.json({ error: { code: 'not_found', message: 'Forecast scope was not found.' } }, { status: 404 });
+    }
     if (/^\/api\/mcp\/v1\/sales\/[^/]+\/forecast$/.test(parsed.pathname)) return Response.json({ data: { sales_id: parsed.pathname.split('/')[5] } });
     return Response.json({ message: 'not found' }, { status: 404 });
   };
@@ -83,4 +98,3 @@ export async function mcpRequest(baseUrl, token, body) {
   }
   return { response, body: text ? JSON.parse(text) : null };
 }
-

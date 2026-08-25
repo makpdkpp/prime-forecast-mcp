@@ -44,11 +44,13 @@ async function executeReadTool({ tool, args, principal, token, gateway, audit, o
   const requestId = randomUUID();
   const startedAt = Date.now();
   let outcome = 'success';
+  let httpStatus = 200;
   try {
     assertToolAllowed(principal, tool);
-    return toolResult(await operation());
+    return toolResult(await operation({ requestId, tool }));
   } catch (error) {
     outcome = error.code ?? 'error';
+    httpStatus = Number.isInteger(error.status) ? error.status : 500;
     return errorResult(error);
   } finally {
     await audit.record({
@@ -59,6 +61,7 @@ async function executeReadTool({ tool, args, principal, token, gateway, audit, o
       tool,
       allowed: outcome !== 'permission_denied',
       outcome,
+      http_status: httpStatus,
       argument_keys: Object.keys(args).sort(),
       duration_ms: Date.now() - startedAt
     });
@@ -76,7 +79,7 @@ export function registerReadOnlyTools(server, { principal, token, gateway, audit
       annotations: READ_ONLY_ANNOTATIONS
     }, async (args) => executeReadTool({
       tool: 'get_my_forecast', args, principal, token, gateway, audit,
-      operation: () => gateway.getMyForecast(token, args)
+      operation: (context) => gateway.getMyForecast(token, args, context)
     }));
   }
 
@@ -92,9 +95,9 @@ export function registerReadOnlyTools(server, { principal, token, gateway, audit
       annotations: READ_ONLY_ANNOTATIONS
     }, async (args) => executeReadTool({
       tool: 'list_team_forecasts', args, principal, token, gateway, audit,
-      operation: () => {
+      operation: (context) => {
         assertTeamScope(principal, args.team_id);
-        return gateway.listTeamForecasts(token, args.team_id, args);
+        return gateway.listTeamForecasts(token, args.team_id, args, context);
       }
     }));
   }
@@ -110,7 +113,7 @@ export function registerReadOnlyTools(server, { principal, token, gateway, audit
       annotations: READ_ONLY_ANNOTATIONS
     }, async (args) => executeReadTool({
       tool: 'get_sales_forecast', args, principal, token, gateway, audit,
-      operation: () => gateway.getSalesForecast(token, args.sales_id, args)
+      operation: (context) => gateway.getSalesForecast(token, args.sales_id, args, context)
     }));
   }
 
@@ -122,10 +125,9 @@ export function registerReadOnlyTools(server, { principal, token, gateway, audit
       annotations: READ_ONLY_ANNOTATIONS
     }, async (args) => executeReadTool({
       tool: 'get_company_forecast', args, principal, token, gateway, audit,
-      operation: () => gateway.getCompanyForecast(token, args)
+      operation: (context) => gateway.getCompanyForecast(token, args, context)
     }));
   }
 }
 
 export { READ_ONLY_ANNOTATIONS };
-
