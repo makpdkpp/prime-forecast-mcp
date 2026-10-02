@@ -12,7 +12,7 @@ const server = app.listen(config.port, config.host, () => {
     port: config.port,
     publicBaseUrl: config.publicBaseUrl,
     node: process.version,
-    phase: 'read-only'
+    phase: config.salesCreateEnabled ? 'sales-create-demo' : 'read-only'
   });
 });
 

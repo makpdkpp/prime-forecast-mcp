@@ -147,4 +147,16 @@ export class LaravelGatewayClient {
   writeAudit(event, timeoutMs) {
     return this.request(READ_PATHS.audit, { method: 'POST', body: event, timeoutMs });
   }
+
+  salesCreateOptions(token, query, requestContext) {
+    return this.request(withQuery('/api/mcp/v1/sales-create/options', query), { userToken: token, requestContext });
+  }
+
+  prepareSalesProject(token, body, requestContext) {
+    return this.request('/api/mcp/v1/sales-drafts', { method: 'POST', userToken: token, body, requestContext });
+  }
+
+  salesProjectDraft(token, draftId, requestContext) {
+    return this.request('/api/mcp/v1/sales-drafts/' + encodeURIComponent(draftId), { userToken: token, requestContext });
+  }
 }

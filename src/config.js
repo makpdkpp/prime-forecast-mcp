@@ -55,6 +55,12 @@ export function loadConfig(env = process.env) {
   if (!['laravel', 'stdout'].includes(auditSink)) {
     throw new Error('AUDIT_SINK must be laravel or stdout');
   }
+  const salesCreateEnabled = env.MCP_SALES_CREATE_ENABLED === 'true';
+  if (salesCreateEnabled && (new URL(publicBaseUrl).protocol !== 'https:' || new URL(laravelBaseUrl).protocol !== 'https:'
+      || new URL(publicBaseUrl).hostname !== 'mcp-demo.primes.co.th'
+      || new URL(laravelBaseUrl).hostname !== 'demo.primes.co.th' || auditSink !== 'laravel')) {
+    throw new Error('Sales creation is restricted to Demo hosts with Laravel audit enabled');
+  }
 
   return Object.freeze({
     env: production ? 'production' : 'development',
@@ -65,6 +71,7 @@ export function loadConfig(env = process.env) {
     laravelMcpServiceToken: serviceToken,
     laravelTimeoutMs: positiveInteger('LARAVEL_TIMEOUT_MS', env.LARAVEL_TIMEOUT_MS, 8000),
     auditSink,
+    salesCreateEnabled,
     auditTimeoutMs: positiveInteger('AUDIT_TIMEOUT_MS', env.AUDIT_TIMEOUT_MS, 2000),
     logLevel: env.LOG_LEVEL ?? 'info',
     allowedHosts,

@@ -54,7 +54,7 @@ export function createMockGatewayFetch({ calls = [] } = {}) {
   };
 }
 
-export async function startTestApp({ calls = [] } = {}) {
+export async function startTestApp({ calls = [], salesCreateEnabled = false, fetchImpl } = {}) {
   const config = {
     env: 'development', host: '127.0.0.1', port: 0,
     publicBaseUrl: 'http://127.0.0.1', laravelBaseUrl: 'http://laravel.test',
@@ -62,9 +62,10 @@ export async function startTestApp({ calls = [] } = {}) {
     auditSink: 'laravel', auditTimeoutMs: 1000, logLevel: 'error',
     allowedHosts: ['127.0.0.1'], allowedOrigins: []
   };
+  config.salesCreateEnabled = salesCreateEnabled;
   const silent = { log() {}, error() {} };
   const logger = createLogger({ level: 'error', destination: silent });
-  const application = createApplication({ config, logger, fetchImpl: createMockGatewayFetch({ calls }) });
+  const application = createApplication({ config, logger, fetchImpl: fetchImpl ?? createMockGatewayFetch({ calls }) });
   const server = application.app.listen(0, '127.0.0.1');
   await once(server, 'listening');
   const address = server.address();

@@ -5,6 +5,7 @@ import { LaravelGatewayClient } from './laravel-client.js';
 import { AuditLogger } from './audit.js';
 import { createPrimeMcpHandler, createTokenVerifier } from './mcp-server.js';
 import { normalizePrincipal, visibleTools } from './permission-guard.js';
+import { canPrepareSales } from './sales-create-tools.js';
 
 export function createApplication({ config, logger, fetchImpl = fetch }) {
   const gateway = new LaravelGatewayClient({
@@ -20,7 +21,7 @@ export function createApplication({ config, logger, fetchImpl = fetch }) {
     timeoutMs: config.auditTimeoutMs
   });
   const verifier = createTokenVerifier({ gateway, logger });
-  const handler = createPrimeMcpHandler({ gateway, audit });
+  const handler = createPrimeMcpHandler({ gateway, audit, salesCreateEnabled: config.salesCreateEnabled });
   const resourceMetadataUrl = `${config.publicBaseUrl}/.well-known/oauth-protected-resource`;
 
   const app = createMcpExpressApp({
@@ -36,7 +37,7 @@ export function createApplication({ config, logger, fetchImpl = fetch }) {
       status: 'ok',
       service: 'prime-forecast-mcp',
       version: '0.1.0',
-      mode: 'read-only'
+      mode: config.salesCreateEnabled ? 'sales-create-demo' : 'read-only'
     });
   });
 
@@ -54,13 +55,15 @@ export function createApplication({ config, logger, fetchImpl = fetch }) {
     res.set('cache-control', 'public, max-age=300').json({
       resource: config.publicBaseUrl,
       authorization_servers: [config.laravelBaseUrl],
-      scopes_supported: ['mcp:read'],
+      scopes_supported: config.salesCreateEnabled ? ['mcp:read', 'mcp:sales:create'] : ['mcp:read'],
       resource_documentation: `${config.publicBaseUrl}/docs`
     });
   });
 
   app.get('/docs', (_req, res) => {
-    res.type('text/plain').send('Prime Forecast V3 MCP — Phase 1 is read-only. Contact the Prime administrator for access.');
+    res.type('text/plain').send(config.salesCreateEnabled
+      ? 'Prime Forecast V3 MCP — Demo sales drafts require explicit scope and human confirmation in Laravel. Contact the Prime administrator for tester access.'
+      : 'Prime Forecast V3 MCP — Phase 1 is read-only. Contact the Prime administrator for access.');
   });
 
   const auth = requireBearerAuth({
@@ -95,7 +98,9 @@ export function createApplication({ config, logger, fetchImpl = fetch }) {
       const tool = req.body?.method === 'tools/call' ? req.body?.params?.name : null;
       if (typeof tool === 'string') {
         const principal = normalizePrincipal(req.auth);
-        if (!visibleTools(principal).includes(tool)) {
+        const writeVisible = config.salesCreateEnabled && canPrepareSales(principal)
+          && ['get_sales_create_options', 'prepare_sales_project', 'get_sales_project_draft'].includes(tool);
+        if (!visibleTools(principal).includes(tool) && !writeVisible) {
           await audit.record({
             request_id: randomUUID(),
             actor_user_id: principal.userId,
