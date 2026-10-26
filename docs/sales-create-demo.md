@@ -23,6 +23,17 @@ accounts are eligible; Admin is not a writer in this pilot. Noneligible accounts
 requesting both scopes receive 403; use read-only scope for those accounts.
 Existing read tokens continue to work without write tools.
 
+OAuth discovery: when the pilot is enabled, a 401 from /mcp includes
+resource_metadata but omits scope. MCP clients then select both scopes from
+scopes_supported in that document. The old scope="mcp:read" challenge took
+precedence over metadata and caused new connections to request read access only.
+Token verification still requires mcp:read; write tools still require Laravel's
+sales.self.create permission, eligible role and feature flag. No existing token
+is upgraded. After deploying this fix and restarting Node, reconnect OAuth and
+approve the Laravel write consent. Check the newest prime-forecast-chatgpt token
+has both abilities, then verify the three draft tools are visible. Clients that
+explicitly configure read-only scopes must update that configuration as well.
+
 Tools:
 
 - get_sales_create_options: search/page existing customers and resolve catalog IDs.

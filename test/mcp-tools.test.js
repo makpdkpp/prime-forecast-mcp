@@ -18,6 +18,34 @@ test('MCP endpoint rejects requests without a bearer token', async (t) => {
   assert.ok(response.headers.get('x-request-id'));
 });
 
+test('sales pilot OAuth discovery uses metadata scopes without requiring write access for reads', async (t) => {
+  const app = await startTestApp({ salesCreateEnabled: true });
+  t.after(() => app.stop());
+  const metadataResponse = await fetch(app.baseUrl + '/.well-known/oauth-protected-resource');
+  const metadata = await metadataResponse.json();
+  assert.deepEqual(metadata.scopes_supported, ['mcp:read', 'mcp:sales:create']);
+
+  // Both new connections and reauthorization after an invalid token must discover
+  // the pilot scope instead of being pinned to the old read-only challenge.
+  for (const token of [null, 'not-a-valid-token']) {
+    const { response, body } = await mcpRequest(app.baseUrl, token, listTools);
+    assert.equal(response.status, 401);
+    assert.equal(body.error, 'invalid_token');
+    const challenge = response.headers.get('www-authenticate');
+    assert.match(challenge, /^Bearer /);
+    assert.ok(challenge.includes('resource_metadata="http://127.0.0.1/.well-known/oauth-protected-resource"'));
+    assert.doesNotMatch(challenge, /(?:^|[, ])scope=/);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+  }
+
+  for (const token of ['sales', 'admin']) {
+    const { response, body } = await mcpRequest(app.baseUrl, token, listTools);
+    assert.equal(response.status, 200);
+    assert.ok(body.result.tools.some(tool => tool.name === 'get_my_forecast'));
+    assert.ok(!body.result.tools.some(tool => tool.name === 'prepare_sales_project'));
+  }
+});
+
 test('MCP endpoint maps a rejected bearer token to 401, never 500', async (t) => {
   const app = await startTestApp();
   t.after(() => app.stop());

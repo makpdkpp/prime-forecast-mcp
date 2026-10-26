@@ -1,4 +1,5 @@
-import { createMcpExpressApp, requireBearerAuth } from '@modelcontextprotocol/express';
+import { createMcpExpressApp } from '@modelcontextprotocol/express';
+import { bearerAuthChallengeResponse, verifyBearerToken } from '@modelcontextprotocol/server';
 import { toNodeHandler } from '@modelcontextprotocol/node';
 import { randomUUID } from 'node:crypto';
 import { LaravelGatewayClient } from './laravel-client.js';
@@ -66,11 +67,26 @@ export function createApplication({ config, logger, fetchImpl = fetch }) {
       : 'Prime Forecast V3 MCP — Phase 1 is read-only. Contact the Prime administrator for access.');
   });
 
-  const auth = requireBearerAuth({
-    verifier,
-    requiredScopes: ['mcp:read'],
-    resourceMetadataUrl
-  });
+  const authOptions = { verifier, requiredScopes: ['mcp:read'], resourceMetadataUrl };
+  const auth = async (req, res, next) => {
+    try {
+      // Continue accepting read tokens; Laravel controls access to draft tools.
+      req.auth = await verifyBearerToken(req.headers.authorization, authOptions);
+      next();
+    } catch (error) {
+      // A 401 scope takes precedence over scopes_supported during OAuth discovery.
+      // In the pilot, omit it so clients discover both scopes from metadata.
+      // Keep the enforced read scope on 403 responses for authenticated callers.
+      const discoveryFailure = config.salesCreateEnabled && error?.code === 'invalid_token';
+      const response = bearerAuthChallengeResponse(error, {
+        ...authOptions,
+        requiredScopes: discoveryFailure ? [] : authOptions.requiredScopes
+      });
+      const challenge = response.headers.get('www-authenticate');
+      if (challenge !== null) res.set('www-authenticate', challenge);
+      res.status(response.status).json(await response.json());
+    }
+  };
   const authDiagnostics = (req, res, next) => {
     const requestId = req.get('x-request-id') || randomUUID();
     const authorization = req.get('authorization') ?? '';
